@@ -76,6 +76,18 @@ const int MAZEMAXSIZE = 50;
 const char PACMANSYMBOL = 'Y';
 const int PACMANCOLORCODE = 14;
 
+const char BLINKYSYMBOL = 'B';
+const int BLINKYCOLORCODE = 12;
+
+const char PINKYSYMBOL = 'P';
+const int PINKYCOLORCODE = 13;
+
+const char INKYSYMBOL = 'I';
+const int INKYCOLORCODE = 11;
+
+const char CLYDESYMBOL = 'C';
+const int CLYDECOLORCODE = 10;
+
 const char FOODSYMBOL = '-';
 const int FOODCOLORCODE = 14;
 
@@ -124,6 +136,10 @@ const char DOWNKEYSYMBOL = 'S';
 const char RIGHTKEYSYMBOL = 'D';
 const int MASKKEYPRESSED = 0x8000;
 
+
+const int PINKYERROR = 4;
+const int INKYERROR = 2;
+const int CLYDEMAXDISTANCE = 8;
 #pragma endregion
 
 #pragma region GenericMethods
@@ -197,13 +213,16 @@ void printAtCoordinatesOfConsole(const Coordinates& coordinates, char symbol) {
 
 #pragma region CoordinatesMethods
 
+double getDistance(Coordinates& point1, Coordinates& point2) {
+	return sqrt(pow(point1.x - point2.x, 2) + pow(point1.y - point2.y, 2));
+}
+
 void copyCoordinates(Coordinates& destination, const Coordinates& source) {
 	destination.x = source.x;
 	destination.y = source.y;
 }
 
 #pragma endregion
-
 
 #pragma region MapFunctions
 
@@ -250,8 +269,6 @@ bool areCoordinatesReachableForPacman(Map& map, Coordinates& coordinates) {
 	return areCoordinatesInMapRange(map, coordinates)
 		&& getAtPosition(map, coordinates) != '#';
 }
-
-
 
 void printAtMap(Map& map, const Coordinates& coordinates, char symbol) {
 	if (areCoordinatesInMapRange(map, coordinates)) {
@@ -345,6 +362,50 @@ void movePacman(Game& game) {
 	}
 }
 
+void setBlinkyTarget(Game& game) {
+	copyCoordinates(game.blinky.target, game.pacman.position);
+};
+
+void setPinkyTarget(Game& game) {
+	if (game.pacman.currentDirection == nullptr) {
+		return;
+	}
+
+	game.pinky.target.x = PINKYERROR * game.pacman.currentDirection->x + game.pacman.position.x;
+	game.pinky.target.y = PINKYERROR * game.pacman.currentDirection->y + game.pacman.position.y;
+
+	if (game.pacman.currentDirection == &UPVECTOR) {
+		game.pinky.target.x += PINKYERROR * game.pacman.currentDirection->y;
+	}
+}
+
+void setInkyTarget(Game& game) {
+	if (game.pacman.currentDirection == nullptr) {
+		return;
+	}
+
+	Coordinates infrontPacman;
+	copyCoordinates(infrontPacman, game.pacman.position);
+	infrontPacman.x += INKYERROR * game.pacman.currentDirection->x;
+	infrontPacman.y += INKYERROR * game.pacman.currentDirection->y;
+
+	if (game.pacman.currentDirection == &UPVECTOR) {
+		infrontPacman.x += INKYERROR * game.pacman.currentDirection->y;
+	}
+
+	game.inky.target.x = infrontPacman.x + (infrontPacman.x - game.blinky.position.x);
+	game.inky.target.y = infrontPacman.y + (infrontPacman.y - game.blinky.position.y);
+}
+
+void setClydeTarget(Game& game) {
+	if (getDistance(game.pacman.position, game.clyde.position) >= CLYDEMAXDISTANCE) {
+		copyCoordinates(game.clyde.target, game.pacman.position);
+	}
+	else {
+		copyCoordinates(game.clyde.target, game.clyde.reappearCoordinates);
+	}
+}
+
 #pragma endregion
 
 
@@ -416,6 +477,37 @@ void readMap(Map& map, const char* fileName) {
 
 #pragma region SetUpGame
 
+void setToClosestValidCoordinates(Map& map, Coordinates& coordinates) {
+	if (areCoordinatesInMapRange(map, coordinates) && getAtPosition(map, coordinates) != '#') {
+		return;
+	}
+
+	Coordinates result = { -1, -1 };
+	double currentMinDistance = -1;
+
+	Coordinates current;
+
+	for (int i = 0; i < map.verticalSize; i++)
+	{
+		for (int j = 0; j < map.horizontalSize; j++)
+		{
+			current.x = j;
+			current.y = i;
+
+			if (areCoordinatesInMapRange(map, current) && getAtPosition(map, current) != '#') {
+				double distance = getDistance(current, coordinates);
+
+				if (distance < currentMinDistance || currentMinDistance == -1) {
+					copyCoordinates(result, current);
+					currentMinDistance = distance;
+				}
+			}
+		}
+	}
+
+	copyCoordinates(coordinates, result);
+}
+
 int countFood(Map& map) {
 	int count = 0;
 	for (int i = 0; i < map.verticalSize; i++)
@@ -431,6 +523,25 @@ int countFood(Map& map) {
 	return count;
 }
 
+bool setUpGhost(Game& game, Ghost& ghost, char symbol, char previousSymbolOnCurrentPosition,
+	int chaseModeColorCode, const VectorMovement* currentVector, void (*setTarget) (Game& game),
+	const Coordinates& reappearCoordinates) {
+	if (currentVector == nullptr) {
+		return false;
+	}
+
+	ghost.symbol = symbol;
+	ghost.previousSymbolOnCurrentPosition = previousSymbolOnCurrentPosition;
+	ghost.chaseModeColorCode = chaseModeColorCode;
+	ghost.currentVector = currentVector;
+	ghost.setTarget = setTarget;
+	getPositionOfSymbol(game.map, ghost.position, ghost.symbol);
+	copyCoordinates(ghost.reappearCoordinates, reappearCoordinates);
+	setToClosestValidCoordinates(game.map, ghost.reappearCoordinates);
+
+	return true;
+}
+
 bool setUpPacman(Game& game) {
 	game.pacman.symbol = PACMANSYMBOL;
 	getPositionOfSymbol(game.map, game.pacman.position, game.pacman.symbol);
@@ -441,6 +552,21 @@ bool setUpPacman(Game& game) {
 	return true;
 }
 
+bool setUpPacmanAndGhosts(Game& game) {
+	return setUpPacman(game)
+		&& setUpGhost(game, game.blinky, BLINKYSYMBOL, FREESPACESYMBOL,
+			BLINKYCOLORCODE, &ZEROVECTOR,
+			setBlinkyTarget, { game.map.horizontalSize - 1, 0 })
+		&& setUpGhost(game, game.pinky, PINKYSYMBOL, FREESPACESYMBOL,
+		 PINKYCOLORCODE, &ZEROVECTOR,
+			setPinkyTarget, { 0, 0 })
+		&& setUpGhost(game, game.inky, INKYSYMBOL, FREESPACESYMBOL,
+			 INKYCOLORCODE, &ZEROVECTOR,
+			setInkyTarget, { game.map.horizontalSize - 1, game.map.verticalSize - 1 })
+		&& setUpGhost(game, game.clyde, CLYDESYMBOL, FREESPACESYMBOL,
+			CLYDECOLORCODE, &ZEROVECTOR,
+			setClydeTarget, { 0, game.map.verticalSize - 1 });
+}
 
 bool setUpGame(Game& game) {
 	showConsoleCursor(false);
@@ -453,7 +579,7 @@ bool setUpGame(Game& game) {
 		return false;
 	}
 
-	return setUpPacman(game);
+	return setUpPacmanAndGhosts(game);
 }
 
 #pragma endregion
