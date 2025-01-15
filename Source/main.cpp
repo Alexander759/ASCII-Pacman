@@ -92,6 +92,9 @@ char MAPFILENAME[] = "map.txt";
 char UNABLETOOPENFILEMESSAGE[] = "Couldn't open file!";
 char FILETOOSHORTMESSAGE[] = "File shorter than expected!";
 
+char PLAYERHASWONMESSAGE[] = "You won!";
+char PLAYERHASLOSTMESSAGE[] = "You lost";
+
 const int VECTORSLENGTH = 5;
 
 const VectorMovement ZEROVECTOR = { 0,0 };
@@ -107,6 +110,19 @@ const VectorMovement* vectors[VECTORSLENGTH] = {
 	&DOWNVECTOR,
 	&RIGHTVECTOR
 };
+
+const int MILISECONDSINCYCLE = 10;
+const int CYCLESPERMOVE = 10;
+const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
+
+const int OFFSETX = 0;
+const int OFFSETY = 0;
+
+const char UPKEYSYMBOL = 'W';
+const char LEFTKEYSYMBOL = 'A';
+const char DOWNKEYSYMBOL = 'S';
+const char RIGHTKEYSYMBOL = 'D';
+const int MASKKEYPRESSED = 0x8000;
 
 #pragma endregion
 
@@ -157,9 +173,57 @@ void showConsoleCursor(bool showCursor) {
 	cursorInfo.bVisible = showCursor;
 	SetConsoleCursorInfo(hStdout, &cursorInfo);
 }
+
+void setCursorPosition(const Coordinates& coordinates) {
+	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+	COORD position = { coordinates.x , coordinates.y };
+	SetConsoleCursorPosition(hStdout, position);
+}
+
+void setCursorPositionWithOffset(const Coordinates& coordinates) {
+	Coordinates offsetCoordinates = {
+		coordinates.x + OFFSETX,
+		coordinates.y + OFFSETY
+	};
+	setCursorPosition(offsetCoordinates);
+}
+
+void printAtCoordinatesOfConsole(const Coordinates& coordinates, char symbol) {
+	setCursorPosition(coordinates);
+	cout << symbol;
+}
+
 #pragma endregion
 
+#pragma region CoordinatesMethods
+
+void copyCoordinates(Coordinates& destination, const Coordinates& source) {
+	destination.x = source.x;
+	destination.y = source.y;
+}
+
+#pragma endregion
+
+
 #pragma region MapFunctions
+
+void reduceCoordinates(Map& map, Coordinates& coordinates) {
+	if (map.horizontalSize <= coordinates.x) {
+		coordinates.x %= map.horizontalSize;
+	}
+	else if (coordinates.x < 0) {
+		coordinates.x %= map.horizontalSize;
+		coordinates.x += map.horizontalSize;
+	}
+
+	if (map.verticalSize <= coordinates.y) {
+		coordinates.y %= map.verticalSize;
+	}
+	else if (coordinates.y < 0) {
+		coordinates.y %= map.verticalSize;
+		coordinates.y += map.verticalSize;
+	}
+}
 
 bool areCoordinatesInMapRange(Map& map, const Coordinates& coordinates) {
 	return coordinates.x >= 0 && coordinates.y >= 0
@@ -174,13 +238,26 @@ char getAtPosition(Map& map, const Coordinates& coordinates) {
 	return map.content[coordinates.y][coordinates.x];
 }
 
-
 void setAtPosition(Map& map, const Coordinates& coordinates, char symbol) {
 	if (!areCoordinatesInMapRange(map, coordinates)) {
 		return;
 	}
 
 	map.content[coordinates.y][coordinates.x] = symbol;
+}
+
+bool areCoordinatesReachableForPacman(Map& map, Coordinates& coordinates) {
+	return areCoordinatesInMapRange(map, coordinates)
+		&& getAtPosition(map, coordinates) != '#';
+}
+
+
+
+void printAtMap(Map& map, const Coordinates& coordinates, char symbol) {
+	if (areCoordinatesInMapRange(map, coordinates)) {
+		setAtPosition(map, coordinates, symbol);
+		printAtCoordinatesOfConsole(coordinates, symbol);
+	}
 }
 
 void getPositionOfSymbol(Map& map, Coordinates& result, char symbol) {
@@ -200,6 +277,20 @@ void getPositionOfSymbol(Map& map, Coordinates& result, char symbol) {
 	result.y = -1;
 }
 
+void printMapOnConsole(Map& map) {
+	if (map.content == nullptr || map.horizontalSize == 0 || map.verticalSize == 0) {
+		return;
+	}
+
+	for (size_t i = 0; i < map.verticalSize; i++)
+	{
+		for (size_t j = 0; j < map.horizontalSize; j++)
+		{
+			Coordinates coordinates = { j, i };
+			printAtCoordinatesOfConsole(coordinates, getAtPosition(map, coordinates));
+		}
+	}
+};
 
 void disposeMap(Map& map) {
 	for (size_t i = 0; i < map.verticalSize; i++)
@@ -212,6 +303,47 @@ void disposeMap(Map& map) {
 	map.horizontalSize = 0;
 	map.verticalSize = 0;
 };
+
+#pragma endregion
+
+#pragma region GameFunctions
+
+void eatFood(Game& game, Coordinates& coordinates) {
+	char symbol = getAtPosition(game.map, coordinates);
+
+	if (!isFood(symbol)) {
+		return;
+	}
+
+	game.score++;
+}
+
+void updatePacmanPosition(Game& game, Coordinates& newPosition) {
+	char symbol = getAtPosition(game.map, newPosition);
+
+	if (isFood(symbol)) {
+		eatFood(game, newPosition);
+	}
+
+	printAtMap(game.map, game.pacman.position, FREESPACESYMBOL);
+
+	copyCoordinates(game.pacman.position, newPosition);
+
+	printAtMap(game.map, game.pacman.position, game.pacman.symbol);
+}
+
+void movePacman(Game& game) {
+	Coordinates newPosition = {
+		game.pacman.position.x + game.pacman.currentDirection->x,
+		game.pacman.position.y + game.pacman.currentDirection->y
+	};
+
+	reduceCoordinates(game.map, newPosition);
+
+	if (areCoordinatesReachableForPacman(game.map, newPosition)) {
+		updatePacmanPosition(game, newPosition);
+	}
+}
 
 #pragma endregion
 
@@ -326,8 +458,92 @@ bool setUpGame(Game& game) {
 
 #pragma endregion
 
+#pragma region MainGameLogic
+
+const VectorMovement* listenForInput() {
+	if (GetAsyncKeyState(UPKEYSYMBOL) & MASKKEYPRESSED) {
+		return &UPVECTOR;
+	}
+
+	if (GetAsyncKeyState(LEFTKEYSYMBOL) & MASKKEYPRESSED) {
+		return &LEFTVECTOR;
+	}
+
+	if (GetAsyncKeyState(DOWNKEYSYMBOL) & MASKKEYPRESSED) {
+		return &DOWNVECTOR;
+	}
+
+	if (GetAsyncKeyState(RIGHTKEYSYMBOL) & MASKKEYPRESSED) {
+		return &RIGHTVECTOR;
+	}
+
+	return nullptr;
+};
+
+bool playerWon(Game& game) {
+	return game.foodCount == game.score;
+};
+
+void checkForPacmanNewDirection(Game& game) {
+	const VectorMovement* newDirection = listenForInput();
+	if (newDirection != nullptr) {
+		Coordinates possibleCoordinates = { 
+			game.pacman.position.x + newDirection->x,
+			game.pacman.position.y + newDirection->y 
+		};
+
+		if (areCoordinatesReachableForPacman(game.map, possibleCoordinates)) {
+			game.pacman.currentDirection = newDirection;
+		}
+	}
+}
+
+void handleEndOfGame(Game& game, bool playerHasWon) {
+	Coordinates end = { 0, game.map.verticalSize + 1 };
+	setCursorPositionWithOffset(end);
+	if (playerHasWon) {
+		cout << PLAYERHASWONMESSAGE << endl;
+	}
+	else {
+		cout << PLAYERHASLOSTMESSAGE << endl;
+	}
+}
+
+void disposeGame(Game& game) {
+	disposeMap(game.map);
+};
+
+void startGame(Game& game) {
+	printMapOnConsole(game.map);
+
+	int cycles = 0;
+	bool playerHasWon = false;
+	while (!playerHasWon) {
+		checkForPacmanNewDirection(game);
+
+		if (cycles >= CYCLESPERMOVE) {
+			movePacman(game);
+
+			cycles = 0;
+			playerHasWon = playerWon(game);
+		}
+
+		Sleep(MILISECONDSINCYCLE);
+		cycles++;
+	}
+
+	handleEndOfGame(game, playerHasWon);
+	disposeGame(game);
+}
+
+
+#pragma endregion
+
+
 int main()
 {
 	Game game;
-	setUpGame(game);
+	if (setUpGame(game)) {
+		startGame(game);
+	}	
 }
