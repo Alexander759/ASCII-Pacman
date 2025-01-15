@@ -94,6 +94,11 @@ const int FOODCOLORCODE = 14;
 const char PELLETSYMBOL = '@';
 const int PELLETCOLOR = 14;
 
+const char WALLSYMBOL = '#';
+const int WALLCOLOR = 1;
+
+const int DEFAULTCOLOR = 7;
+
 const char FREESPACESYMBOL = ' ';
 
 const int NUMBERSOFSYMBOLSFORFOOD = 2;
@@ -180,6 +185,10 @@ bool isFood(char symbol) {
 	return false;
 }
 
+bool isWall(char symbol) {
+	return symbol == WALLSYMBOL;
+}
+
 
 void showConsoleCursor(bool showCursor) {
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -204,9 +213,41 @@ void setCursorPositionWithOffset(const Coordinates& coordinates) {
 	setCursorPosition(offsetCoordinates);
 }
 
-void printAtCoordinatesOfConsole(const Coordinates& coordinates, char symbol) {
-	setCursorPosition(coordinates);
-	cout << symbol;
+void setConsoleColor(int colorCode) {
+	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hStdout, colorCode);
+}
+
+void setColorToSymbolStatic(char symbol) {
+	switch (symbol) {
+	case FOODSYMBOL:
+		setConsoleColor(FOODCOLORCODE);
+		break;
+	case PELLETSYMBOL:
+		setConsoleColor(PELLETCOLOR);
+		break;
+	case WALLSYMBOL:
+		setConsoleColor(WALLCOLOR);
+		break;
+	case PACMANSYMBOL:
+		setConsoleColor(PACMANCOLORCODE);
+		break;
+	case BLINKYSYMBOL:
+		setConsoleColor(BLINKYCOLORCODE);
+		break;
+	case PINKYSYMBOL:
+		setConsoleColor(PINKYCOLORCODE);
+		break;
+	case INKYSYMBOL:
+		setConsoleColor(INKYCOLORCODE);
+		break;
+	case CLYDESYMBOL:
+		setConsoleColor(CLYDECOLORCODE);
+		break;
+	default:
+		setConsoleColor(DEFAULTCOLOR);
+		break;
+	}
 }
 
 #pragma endregion
@@ -220,6 +261,21 @@ double getDistance(Coordinates& point1, Coordinates& point2) {
 void copyCoordinates(Coordinates& destination, const Coordinates& source) {
 	destination.x = source.x;
 	destination.y = source.y;
+}
+
+void printAtCoordinatesOfConsole(const Coordinates& coordinates, char symbol) {
+	setCursorPosition(coordinates);
+	cout << symbol;
+}
+
+void printAtCoordinatesOfGame(const Coordinates& coordinates, char symbol) {
+	setCursorPositionWithOffset(coordinates);
+	cout << symbol;
+}
+
+void printAtCoordinatesOfGameWithStaticColor(const Coordinates& coordinates, char symbol) {
+	setColorToSymbolStatic(symbol);
+	printAtCoordinatesOfGame(coordinates, symbol);
 }
 
 #pragma endregion
@@ -304,7 +360,7 @@ void printMapOnConsole(Map& map) {
 		for (size_t j = 0; j < map.horizontalSize; j++)
 		{
 			Coordinates coordinates = { j, i };
-			printAtCoordinatesOfConsole(coordinates, getAtPosition(map, coordinates));
+			printAtCoordinatesOfGameWithStaticColor(coordinates, getAtPosition(map, coordinates));
 		}
 	}
 };
@@ -335,6 +391,10 @@ void eatFood(Game& game, Coordinates& coordinates) {
 	game.score++;
 }
 
+void setColorToSymbolInGame(Game& game, char symbol) {
+	setColorToSymbolStatic(symbol);
+}
+
 void updatePacmanPosition(Game& game, Coordinates& newPosition) {
 	char symbol = getAtPosition(game.map, newPosition);
 
@@ -346,8 +406,11 @@ void updatePacmanPosition(Game& game, Coordinates& newPosition) {
 
 	copyCoordinates(game.pacman.position, newPosition);
 
+	setColorToSymbolInGame(game, game.pacman.symbol);
 	printAtMap(game.map, game.pacman.position, game.pacman.symbol);
 }
+
+
 
 void movePacman(Game& game) {
 	Coordinates newPosition = {
@@ -407,7 +470,6 @@ void setClydeTarget(Game& game) {
 }
 
 #pragma endregion
-
 
 #pragma region ReadFile
 
@@ -625,6 +687,7 @@ void checkForPacmanNewDirection(Game& game) {
 }
 
 void handleEndOfGame(Game& game, bool playerHasWon) {
+	setConsoleColor(DEFAULTCOLOR);
 	Coordinates end = { 0, game.map.verticalSize + 1 };
 	setCursorPositionWithOffset(end);
 	if (playerHasWon) {
@@ -635,9 +698,11 @@ void handleEndOfGame(Game& game, bool playerHasWon) {
 	}
 }
 
+
 void disposeGame(Game& game) {
 	disposeMap(game.map);
 };
+
 
 void startGame(Game& game) {
 	printMapOnConsole(game.map);
@@ -661,6 +726,7 @@ void startGame(Game& game) {
 	handleEndOfGame(game, playerHasWon);
 	disposeGame(game);
 }
+
 
 
 #pragma endregion
