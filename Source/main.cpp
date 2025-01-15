@@ -65,6 +65,13 @@ struct Game {
 
 #pragma endregion
 
+#pragma region Constants
+
+const int MAZEMAXSIZE = 50;
+
+#pragma endregion
+
+
 int main()
 {
 }
