@@ -82,6 +82,24 @@ char FILETOOSHORTMESSAGE[] = "File shorter than expected!";
 
 #pragma region GenericMethods
 
+int getStringLength(const char* str) {
+	if (str == nullptr) {
+		return 0;
+	}
+
+	int count = 0;
+
+	while (str[count] != '\0') {
+		count++;
+	}
+
+	return count;
+}
+
+#pragma endregion
+
+#pragma region MapFunctions
+
 bool areCoordinatesInMapRange(Map& map, const Coordinates& coordinates) {
 	return coordinates.x >= 0 && coordinates.y >= 0
 		&& map.horizontalSize > coordinates.x && map.verticalSize > coordinates.y;
@@ -104,24 +122,6 @@ void setAtPosition(Map& map, const Coordinates& coordinates, char symbol) {
 
 	map.content[coordinates.y][coordinates.x] = symbol;
 }
-
-int getStringLength(const char* str) {
-	if (str == nullptr) {
-		return 0;
-	}
-
-	int count = 0;
-
-	while (str[count] != '\0') {
-		count++;
-	}
-
-	return count;
-}
-
-#pragma endregion
-
-#pragma region MapFunctions
 
 void disposeMap(Map& map) {
 	for (size_t i = 0; i < map.verticalSize; i++)
@@ -204,20 +204,13 @@ void readMap(Map& map, const char* fileName) {
 
 #pragma endregion
 
+#pragma region SetUpGame
+
+#pragma endregion
+
+
 
 int main()
 {
-	Map map;
-	readMap(map, MAPFILENAME);
-
-	for (int i = 0; i < map.verticalSize; i++)
-	{
-		for (int j = 0; j < map.horizontalSize; j++)
-		{
-			cout << getAtPosition(map, { j, i });
-		}
-		cout << endl;
-	}
-
-	disposeMap(map);
+	
 }
