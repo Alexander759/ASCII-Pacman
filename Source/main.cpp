@@ -71,6 +71,24 @@ const int MAZEMAXSIZE = 50;
 
 #pragma endregion
 
+#pragma region GenericMethods
+
+int getStringLength(const char* str) {
+	if (str == nullptr) {
+		return 0;
+	}
+
+	int count = 0;
+
+	while (str[count] != '\0') {
+		count++;
+	}
+
+	return count;
+}
+
+#pragma endregion
+
 
 int main()
 {
