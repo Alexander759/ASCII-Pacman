@@ -148,6 +148,21 @@ const int CLYDEMAXDISTANCE = 8;
 #pragma endregion
 
 #pragma region GenericMethods
+int getRandom(unsigned int start, unsigned int end) {
+	return rand() % (end - start) + start;
+}
+
+unsigned int getNumberOfTrues(bool* bools, int length) {
+	unsigned int result = 0;
+	for (size_t i = 0; i < length; i++)
+	{
+		if (bools[i]) {
+			result++;
+		}
+	}
+
+	return result;
+}
 
 int getStringLength(const char* str) {
 	if (str == nullptr) {
@@ -162,6 +177,11 @@ int getStringLength(const char* str) {
 
 	return count;
 }
+
+bool isGhost(char symbol) {
+	return symbol == PINKYSYMBOL || symbol == INKYSYMBOL || symbol == BLINKYSYMBOL || symbol == CLYDESYMBOL;
+}
+
 bool isPacman(char symbol) {
 	return symbol == PACMANSYMBOL;
 }
@@ -252,7 +272,49 @@ void setColorToSymbolStatic(char symbol) {
 
 #pragma endregion
 
+#pragma region VectorMovementMethods
+bool areEqualVectors(VectorMovement firstVector, VectorMovement secondVector) {
+	return firstVector.x == secondVector.x && firstVector.y == secondVector.y;
+}
+
+void copyVector(VectorMovement& destination, const VectorMovement source) {
+	destination.x = source.x;
+	destination.y = source.y;
+}
+
+void multiplyVectorByScalar(VectorMovement& vector, int scalar) {
+	vector.x *= scalar;
+	vector.y *= scalar;
+}
+
+const VectorMovement* getOppositeVector(const VectorMovement* vector) {
+	if (vector == nullptr) {
+		return nullptr;
+	}
+
+	VectorMovement opposite;
+	copyVector(opposite, *vector);
+	multiplyVectorByScalar(opposite, -1);
+
+	for (size_t i = 0; i < VECTORSLENGTH; i++)
+	{
+		if (areEqualVectors(opposite, *vectors[i])) {
+			return vectors[i];
+		}
+	}
+
+	return nullptr;
+}
+
+
+#pragma endregion
+
+
 #pragma region CoordinatesMethods
+
+bool areCoordinatesEqual(const Coordinates& firstCoordinates, const Coordinates& secondCoordinates) {
+	return firstCoordinates.x == secondCoordinates.x && firstCoordinates.y == secondCoordinates.y;
+}
 
 double getDistance(Coordinates& point1, Coordinates& point2) {
 	return sqrt(pow(point1.x - point2.x, 2) + pow(point1.y - point2.y, 2));
@@ -460,6 +522,44 @@ void setInkyTarget(Game& game) {
 	game.inky.target.y = infrontPacman.y + (infrontPacman.y - game.blinky.position.y);
 }
 
+
+void removeGhost(Game& game, Ghost& ghost) {
+	char symbol = getAtPosition(game.map, ghost.position);
+
+	if (areCoordinatesEqual(game.pacman.position, ghost.position)) {
+		setColorToSymbolInGame(game, game.pacman.symbol);
+		printAtMap(game.map, ghost.position, game.pacman.symbol);
+	}
+	else {
+		setColorToSymbolInGame(game, ghost.previousSymbolOnCurrentPosition);
+		printAtMap(game.map, ghost.position, ghost.previousSymbolOnCurrentPosition);
+	}
+}
+
+void printGhostAtPosition(Game& game, Ghost& ghost, Coordinates newPosition) {
+	if (!areCoordinatesEqual(ghost.position, newPosition)) {
+		ghost.previousSymbolOnCurrentPosition = getAtPosition(game.map, newPosition);
+		copyCoordinates(ghost.position, newPosition);
+		if (ghost.previousSymbolOnCurrentPosition == game.pacman.symbol) {
+			ghost.previousSymbolOnCurrentPosition = FREESPACESYMBOL;
+		}
+	}
+
+	setColorToSymbolInGame(game, ghost.symbol);
+	printAtMap(game.map, ghost.position, ghost.symbol);
+}
+
+void updateGhostPosition(Game& game, Ghost& ghost, Coordinates& newPosition) {
+	removeGhost(game, ghost);
+	printGhostAtPosition(game, ghost, newPosition);
+}
+
+bool areCoordinatesValidGhostPosition(Map& map, Coordinates& coordinates) {
+	return areCoordinatesInMapRange(map, coordinates)
+		&& !isWall(getAtPosition(map, coordinates))
+		&& !isGhost(getAtPosition(map, coordinates));
+}
+
 void setClydeTarget(Game& game) {
 	if (getDistance(game.pacman.position, game.clyde.position) >= CLYDEMAXDISTANCE) {
 		copyCoordinates(game.clyde.target, game.pacman.position);
@@ -467,6 +567,146 @@ void setClydeTarget(Game& game) {
 	else {
 		copyCoordinates(game.clyde.target, game.clyde.reappearCoordinates);
 	}
+}
+
+void moveGhostUsingCurrentVector(Game& game, Ghost& ghost) {
+	Coordinates newGhostCoordinates = {
+		ghost.position.x + ghost.currentVector->x,
+		ghost.position.y + ghost.currentVector->y
+	};
+	reduceCoordinates(game.map, newGhostCoordinates);
+	updateGhostPosition(game, ghost, newGhostCoordinates);
+}
+
+void setMoveBackwardsOrStop(Game& game, Ghost& ghost) {
+	const VectorMovement* oppositeVector = getOppositeVector(ghost.currentVector);
+
+	if (oppositeVector == nullptr) {
+		ghost.currentVector = &ZEROVECTOR;
+		return;
+	}
+
+	Coordinates possibleCoordinates = {
+		ghost.position.x + oppositeVector->x,
+		ghost.position.y + oppositeVector->y
+	};
+	reduceCoordinates(game.map, possibleCoordinates);
+
+	if (areCoordinatesValidGhostPosition(game.map, possibleCoordinates)) {
+		ghost.currentVector = oppositeVector;
+		return;
+	}
+
+	ghost.currentVector = &ZEROVECTOR;
+}
+
+
+bool isVectorAllowed(Map& map, Ghost& ghost, const VectorMovement* vector) {
+	if (vector == nullptr) {
+		return false;
+	}
+
+	if (vector == &ZEROVECTOR || vector == getOppositeVector(ghost.currentVector)) {
+		return false;
+	}
+
+	Coordinates possibleCoordinates = {
+		ghost.position.x + vector->x,
+		ghost.position.y + vector->y
+	};
+	reduceCoordinates(map, possibleCoordinates);
+
+	return areCoordinatesValidGhostPosition(map, possibleCoordinates);
+}
+
+
+void setGhostVectorToTarget(Game& game, Ghost& ghost) {
+	double minDistance = -1;
+	int currentIndex = 0;
+
+	for (size_t i = 0; i < VECTORSLENGTH; i++)
+	{
+		if (isVectorAllowed(game.map, ghost, vectors[i])) {
+			Coordinates possibleCoordinates = {
+				ghost.position.x + vectors[i]->x,
+				ghost.position.y + vectors[i]->y
+			};
+			reduceCoordinates(game.map, possibleCoordinates);
+			double currentDistance = getDistance(possibleCoordinates, ghost.target);
+
+			if (minDistance > currentDistance || minDistance == -1) {
+				minDistance = currentDistance;
+				currentIndex = i;
+			}
+		}
+	}
+
+	if (minDistance != -1) {
+		ghost.currentVector = vectors[currentIndex];
+		return;
+	}
+
+	setMoveBackwardsOrStop(game, ghost);
+}
+
+void setGhostVectorToRandom(Game& game, Ghost& ghost) {
+	bool isAllowed[VECTORSLENGTH] = {};
+	for (int i = 0; i < VECTORSLENGTH; i++)
+	{
+		isAllowed[i] = isVectorAllowed(game.map, ghost, vectors[i]);
+	}
+
+	unsigned int numberOfPossibleDirections = getNumberOfTrues(isAllowed, VECTORSLENGTH);
+
+	if (numberOfPossibleDirections == 0) {
+		setMoveBackwardsOrStop(game, ghost);
+		return;
+	}
+
+	int random = getRandom(0, numberOfPossibleDirections);
+	random++;
+
+	int count = 0;
+	for (size_t i = 0; i < VECTORSLENGTH; i++)
+	{
+		if (isAllowed[i]) {
+			count++;
+
+			if (random == count) {
+				removeGhost(game, ghost);
+				Coordinates newPosition = {
+					ghost.position.x + vectors[i]->x,
+					ghost.position.y + vectors[i]->y
+				};
+				ghost.currentVector = vectors[i];
+				return;
+			}
+		}
+	}
+}
+
+
+void moveGhost(Game& game, Ghost& ghost) {
+
+
+
+	if (game.currentGameMode == ChaseMode) {
+		ghost.setTarget(game);
+		setGhostVectorToTarget(game, ghost);
+	}
+	else {
+		setGhostVectorToRandom(game, ghost);
+	}
+
+	moveGhostUsingCurrentVector(game, ghost);
+}
+
+
+void moveGhosts(Game& game) {
+	moveGhost(game, game.blinky);
+	moveGhost(game, game.pinky);
+	moveGhost(game, game.inky);
+	moveGhost(game, game.clyde);
 }
 
 #pragma endregion
@@ -714,6 +954,7 @@ void startGame(Game& game) {
 
 		if (cycles >= CYCLESPERMOVE) {
 			movePacman(game);
+			moveGhosts(game);
 
 			cycles = 0;
 			playerHasWon = playerWon(game);
