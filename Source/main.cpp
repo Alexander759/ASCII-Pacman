@@ -44,8 +44,10 @@ struct Ghost {
 	const VectorMovement* currentVector;
 
 	int chaseModeColorCode;
+	int startScoreValue;
 	char symbol;
 	char previousSymbolOnCurrentPosition;
+	bool hasStarted;
 };
 
 struct Pacman {
@@ -81,15 +83,19 @@ const int PACMANCOLORCODE = 14;
 
 const char BLINKYSYMBOL = 'B';
 const int BLINKYCOLORCODE = 12;
+const int BLINKYSTARTSCORE = 0;
 
 const char PINKYSYMBOL = 'P';
 const int PINKYCOLORCODE = 13;
+const int PINKYSTARTSCORE = 20;
 
 const char INKYSYMBOL = 'I';
 const int INKYCOLORCODE = 11;
+const int INKYSTARTSCORE = 40;
 
 const char CLYDESYMBOL = 'C';
 const int CLYDECOLORCODE = 10;
+const int CLYDESTARTSCORE = 60;
 
 const char FOODSYMBOL = '-';
 const int FOODCOLORCODE = 14;
@@ -449,7 +455,7 @@ void disposeMap(Map& map) {
 
 #pragma endregion
 
-#pragma region GameFunctions
+#pragma region GhostMethods
 
 int getGhostColorCode(GameMode& gameMode, Ghost& ghost) {
 	if (gameMode == ChaseMode) {
@@ -459,6 +465,15 @@ int getGhostColorCode(GameMode& gameMode, Ghost& ghost) {
 	return FRIGHTENEDMODEGHOSTSCOLOR;
 };
 
+void startGhostIfNeeded(Ghost& ghost, int score) {
+	if (!ghost.hasStarted && score >= ghost.startScoreValue) {
+		ghost.hasStarted = true;
+	}
+}
+
+#pragma endregion
+
+#pragma region GameFunctions
 Ghost* getGhostBySymbol(Game& game, char symbol) {
 	if (game.blinky.symbol == symbol) {
 		return &game.blinky;
@@ -742,27 +757,30 @@ void setGhostVectorToRandom(Game& game, Ghost& ghost) {
 
 
 void moveGhost(Game& game, Ghost& ghost) {
+	startGhostIfNeeded(ghost, game.score);
 
-	if (game.ghostsMustMoveBack) {
-		setMoveBackwardsOrStop(game, ghost);
+	if (ghost.hasStarted) {
+		if (game.ghostsMustMoveBack) {
+			setMoveBackwardsOrStop(game, ghost);
 
-		if (ghost.currentVector != &ZEROVECTOR) {
-			moveGhostUsingCurrentVector(game, ghost);
-			return;
+			if (ghost.currentVector != &ZEROVECTOR) {
+				moveGhostUsingCurrentVector(game, ghost);
+				return;
+			}
+		}
+
+		if (game.currentGameMode == ChaseMode) {
+			ghost.setTarget(game);
+			setGhostVectorToTarget(game, ghost);
+		}
+		else {
+			setGhostVectorToRandom(game, ghost);
 		}
 	}
 
-	if (game.currentGameMode == ChaseMode) {
-		ghost.setTarget(game);
-		setGhostVectorToTarget(game, ghost);
-	}
-	else {
-		setGhostVectorToRandom(game, ghost);
-	}
-	
-
 	moveGhostUsingCurrentVector(game, ghost);
 }
+
 
 void moveGhosts(Game& game) {
 	moveGhost(game, game.blinky);
@@ -888,15 +906,17 @@ int countFood(Map& map) {
 	return count;
 }
 
-bool setUpGhost(Game& game, Ghost& ghost, char symbol, char previousSymbolOnCurrentPosition,
-	int chaseModeColorCode, const VectorMovement* currentVector, void (*setTarget) (Game& game),
+bool setUpGhost(Game& game, Ghost& ghost, char symbol, bool hasStarted, char previousSymbolOnCurrentPosition,
+	int startScoreValue, int chaseModeColorCode, const VectorMovement* currentVector, void (*setTarget) (Game& game),
 	const Coordinates& reappearCoordinates) {
 	if (currentVector == nullptr) {
 		return false;
 	}
 
 	ghost.symbol = symbol;
+	ghost.hasStarted = hasStarted;
 	ghost.previousSymbolOnCurrentPosition = previousSymbolOnCurrentPosition;
+	ghost.startScoreValue = startScoreValue;
 	ghost.chaseModeColorCode = chaseModeColorCode;
 	ghost.currentVector = currentVector;
 	ghost.setTarget = setTarget;
@@ -919,19 +939,20 @@ bool setUpPacman(Game& game) {
 
 bool setUpPacmanAndGhosts(Game& game) {
 	return setUpPacman(game)
-		&& setUpGhost(game, game.blinky, BLINKYSYMBOL, FREESPACESYMBOL,
-			BLINKYCOLORCODE, &ZEROVECTOR,
+		&& setUpGhost(game, game.blinky, BLINKYSYMBOL, false, FREESPACESYMBOL,
+			BLINKYSTARTSCORE, BLINKYCOLORCODE, &ZEROVECTOR,
 			setBlinkyTarget, { game.map.horizontalSize - 1, 0 })
-		&& setUpGhost(game, game.pinky, PINKYSYMBOL, FREESPACESYMBOL,
-		 PINKYCOLORCODE, &ZEROVECTOR,
+		&& setUpGhost(game, game.pinky, PINKYSYMBOL, false, FREESPACESYMBOL,
+			PINKYSTARTSCORE, PINKYCOLORCODE, &ZEROVECTOR,
 			setPinkyTarget, { 0, 0 })
-		&& setUpGhost(game, game.inky, INKYSYMBOL, FREESPACESYMBOL,
-			 INKYCOLORCODE, &ZEROVECTOR,
+		&& setUpGhost(game, game.inky, INKYSYMBOL, false, FREESPACESYMBOL,
+			INKYSTARTSCORE, INKYCOLORCODE, &ZEROVECTOR,
 			setInkyTarget, { game.map.horizontalSize - 1, game.map.verticalSize - 1 })
-		&& setUpGhost(game, game.clyde, CLYDESYMBOL, FREESPACESYMBOL,
-			CLYDECOLORCODE, &ZEROVECTOR,
+		&& setUpGhost(game, game.clyde, CLYDESYMBOL, false, FREESPACESYMBOL,
+			CLYDESTARTSCORE, CLYDECOLORCODE, &ZEROVECTOR,
 			setClydeTarget, { 0, game.map.verticalSize - 1 });
 }
+
 
 bool setUpGame(Game& game) {
 	showConsoleCursor(false);
