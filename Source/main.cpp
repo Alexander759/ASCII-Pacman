@@ -1,5 +1,7 @@
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
+#include <ctime>
 #include <windows.h>
 
 using namespace std;
@@ -65,6 +67,7 @@ struct Game {
 	int foodCount;
 	int leftInFrightenedMode;
 	int score;
+	bool ghostsMustMoveBack;
 };
 
 #pragma endregion
@@ -133,7 +136,7 @@ const int CYCLESPERMOVE = 10;
 const int CYCLESPERMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
 const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
 
-const int MOVESINFRIGHTENEDMODE = 100;
+const int MOVESINFRIGHTENEDMODE = 10;
 
 
 const int OFFSETX = 0;
@@ -315,7 +318,6 @@ const VectorMovement* getOppositeVector(const VectorMovement* vector) {
 
 #pragma endregion
 
-
 #pragma region CoordinatesMethods
 
 bool areCoordinatesEqual(const Coordinates& firstCoordinates, const Coordinates& secondCoordinates) {
@@ -494,12 +496,12 @@ void eatFood(Game& game, Coordinates& coordinates) {
 	if (isPellet(symbol) && (!isGhost(getAtPosition(game.map, coordinates)) || game.currentGameMode == FrightenedMode)) {
 		if (game.currentGameMode != FrightenedMode) {
 			game.currentGameMode = FrightenedMode;
+			game.ghostsMustMoveBack = true;
 		}
 
 		game.leftInFrightenedMode = MOVESINFRIGHTENEDMODE;
 	}
 }
-
 
 void setColorToSymbolInGame(Game& game, char symbol) {
 	if (isGhost(symbol)) {
@@ -740,6 +742,16 @@ void setGhostVectorToRandom(Game& game, Ghost& ghost) {
 
 
 void moveGhost(Game& game, Ghost& ghost) {
+
+	if (game.ghostsMustMoveBack) {
+		setMoveBackwardsOrStop(game, ghost);
+
+		if (ghost.currentVector != &ZEROVECTOR) {
+			moveGhostUsingCurrentVector(game, ghost);
+			return;
+		}
+	}
+
 	if (game.currentGameMode == ChaseMode) {
 		ghost.setTarget(game);
 		setGhostVectorToTarget(game, ghost);
@@ -747,16 +759,17 @@ void moveGhost(Game& game, Ghost& ghost) {
 	else {
 		setGhostVectorToRandom(game, ghost);
 	}
+	
 
 	moveGhostUsingCurrentVector(game, ghost);
 }
-
 
 void moveGhosts(Game& game) {
 	moveGhost(game, game.blinky);
 	moveGhost(game, game.pinky);
 	moveGhost(game, game.inky);
 	moveGhost(game, game.clyde);
+	game.ghostsMustMoveBack = false;
 }
 
 #pragma endregion
@@ -924,6 +937,7 @@ bool setUpGame(Game& game) {
 	showConsoleCursor(false);
 
 	game.leftInFrightenedMode = 0;
+	game.ghostsMustMoveBack = false;
 	game.score = 0;
 	readMap(game.map, MAPFILENAME);
 
@@ -1001,6 +1015,7 @@ void disposeGame(Game& game) {
 void handleFrightenedMode(Game& game) {
 	if (game.currentGameMode == FrightenedMode && game.leftInFrightenedMode == 0) {
 		game.currentGameMode = ChaseMode;
+		game.ghostsMustMoveBack = true;
 	}
 
 	if (game.currentGameMode == FrightenedMode) {
@@ -1089,7 +1104,6 @@ void startGame(Game& game) {
 }
 
 #pragma endregion
-
 
 int main()
 {
