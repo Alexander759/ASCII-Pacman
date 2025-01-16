@@ -130,7 +130,11 @@ const VectorMovement* vectors[VECTORSLENGTH] = {
 
 const int MILISECONDSINCYCLE = 10;
 const int CYCLESPERMOVE = 10;
+const int CYCLESPERMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
 const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
+
+const int MOVESINFRIGHTENEDMODE = 100;
+
 
 const int OFFSETX = 0;
 const int OFFSETY = 0;
@@ -145,6 +149,8 @@ const int MASKKEYPRESSED = 0x8000;
 const int PINKYERROR = 4;
 const int INKYERROR = 2;
 const int CLYDEMAXDISTANCE = 8;
+
+const int FRIGHTENEDMODEGHOSTSCOLOR = 1;
 #pragma endregion
 
 #pragma region GenericMethods
@@ -443,17 +449,64 @@ void disposeMap(Map& map) {
 
 #pragma region GameFunctions
 
+int getGhostColorCode(GameMode& gameMode, Ghost& ghost) {
+	if (gameMode == ChaseMode) {
+		return ghost.chaseModeColorCode;
+	}
+
+	return FRIGHTENEDMODEGHOSTSCOLOR;
+};
+
+Ghost* getGhostBySymbol(Game& game, char symbol) {
+	if (game.blinky.symbol == symbol) {
+		return &game.blinky;
+	}
+
+	if (game.pinky.symbol == symbol) {
+		return &game.pinky;
+	}
+
+	if (game.inky.symbol == symbol) {
+		return &game.inky;
+	}
+
+	if (game.clyde.symbol == symbol) {
+		return &game.clyde;
+	}
+
+	return nullptr;
+}
+
+
 void eatFood(Game& game, Coordinates& coordinates) {
 	char symbol = getAtPosition(game.map, coordinates);
+
+	if (isGhost(symbol)) {
+		symbol = getGhostBySymbol(game, symbol)->previousSymbolOnCurrentPosition;
+	}
 
 	if (!isFood(symbol)) {
 		return;
 	}
 
 	game.score++;
+
+	if (isPellet(symbol) && (!isGhost(getAtPosition(game.map, coordinates)) || game.currentGameMode == FrightenedMode)) {
+		if (game.currentGameMode != FrightenedMode) {
+			game.currentGameMode = FrightenedMode;
+		}
+
+		game.leftInFrightenedMode = MOVESINFRIGHTENEDMODE;
+	}
 }
 
+
 void setColorToSymbolInGame(Game& game, char symbol) {
+	if (isGhost(symbol)) {
+		setConsoleColor(getGhostColorCode(game.currentGameMode, *getGhostBySymbol(game, symbol)));
+		return;
+	}
+
 	setColorToSymbolStatic(symbol);
 }
 
@@ -687,9 +740,6 @@ void setGhostVectorToRandom(Game& game, Ghost& ghost) {
 
 
 void moveGhost(Game& game, Ghost& ghost) {
-
-
-
 	if (game.currentGameMode == ChaseMode) {
 		ghost.setTarget(game);
 		setGhostVectorToTarget(game, ghost);
@@ -912,6 +962,10 @@ bool playerWon(Game& game) {
 	return game.foodCount == game.score;
 };
 
+bool playerLost(Game& game, bool hasGhostColided) {
+	return hasGhostColided && game.currentGameMode == ChaseMode;
+};
+
 void checkForPacmanNewDirection(Game& game) {
 	const VectorMovement* newDirection = listenForInput();
 	if (newDirection != nullptr) {
@@ -944,6 +998,56 @@ void disposeGame(Game& game) {
 };
 
 
+void handleFrightenedMode(Game& game) {
+	if (game.currentGameMode == FrightenedMode && game.leftInFrightenedMode == 0) {
+		game.currentGameMode = ChaseMode;
+	}
+
+	if (game.currentGameMode == FrightenedMode) {
+		game.leftInFrightenedMode--;
+	}
+}
+
+
+Ghost* hasColided(Game& game) {
+	if (areCoordinatesEqual(game.pacman.position, game.blinky.position)) {
+		return &game.blinky;
+	}
+
+	if (areCoordinatesEqual(game.pacman.position, game.pinky.position)) {
+		return &game.pinky;
+	}
+
+	if (areCoordinatesEqual(game.pacman.position, game.inky.position)) {
+		return &game.inky;
+	}
+
+	if (areCoordinatesEqual(game.pacman.position, game.clyde.position)) {
+		return &game.clyde;
+	}
+
+	return nullptr;
+}
+
+
+bool checkForColidedGhost(Game& game) {
+	Ghost* coliderGhost = hasColided(game);
+
+	if (coliderGhost != nullptr) {
+		if (game.currentGameMode == FrightenedMode) {
+			updateGhostPosition(game, *coliderGhost, coliderGhost->reappearCoordinates);
+		}
+
+		setColorToSymbolInGame(game, coliderGhost->symbol);
+		printAtCoordinatesOfGame(coliderGhost->position, coliderGhost->symbol);
+
+		return true;
+	}
+
+	return false;
+}
+
+
 void startGame(Game& game) {
 	printMapOnConsole(game.map);
 
@@ -952,9 +1056,25 @@ void startGame(Game& game) {
 	while (!playerHasWon) {
 		checkForPacmanNewDirection(game);
 
-		if (cycles >= CYCLESPERMOVE) {
+		if (game.currentGameMode == FrightenedMode && cycles == CYCLESPERMOVEINFRIGHTENEDMODE) {
 			movePacman(game);
+			checkForColidedGhost(game);
+			playerHasWon = playerWon(game);
+		}
+		else if (cycles >= CYCLESPERMOVE) {
+			movePacman(game);
+
+			if (playerLost(game, checkForColidedGhost(game))) {
+				break;
+			}
+
 			moveGhosts(game);
+
+			if (playerLost(game, checkForColidedGhost(game))) {
+				break;
+			}
+
+			handleFrightenedMode(game);
 
 			cycles = 0;
 			playerHasWon = playerWon(game);
@@ -967,8 +1087,6 @@ void startGame(Game& game) {
 	handleEndOfGame(game, playerHasWon);
 	disposeGame(game);
 }
-
-
 
 #pragma endregion
 
