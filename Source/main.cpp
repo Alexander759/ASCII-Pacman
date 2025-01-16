@@ -393,7 +393,7 @@ void setAtPosition(Map& map, const Coordinates& coordinates, char symbol) {
 
 bool areCoordinatesReachableForPacman(Map& map, Coordinates& coordinates) {
 	return areCoordinatesInMapRange(map, coordinates)
-		&& getAtPosition(map, coordinates) != '#';
+		&& !isWall(getAtPosition(map, coordinates));
 }
 
 void printAtMap(Map& map, const Coordinates& coordinates, char symbol) {
@@ -843,7 +843,7 @@ void readMap(Map& map, const char* fileName) {
 #pragma region SetUpGame
 
 void setToClosestValidCoordinates(Map& map, Coordinates& coordinates) {
-	if (areCoordinatesInMapRange(map, coordinates) && getAtPosition(map, coordinates) != '#') {
+	if (areCoordinatesInMapRange(map, coordinates) && !isWall(getAtPosition(map, coordinates))) {
 		return;
 	}
 
@@ -859,7 +859,7 @@ void setToClosestValidCoordinates(Map& map, Coordinates& coordinates) {
 			current.x = j;
 			current.y = i;
 
-			if (areCoordinatesInMapRange(map, current) && getAtPosition(map, current) != '#') {
+			if (areCoordinatesInMapRange(map, current) && !isWall(getAtPosition(map, current))) {
 				double distance = getDistance(current, coordinates);
 
 				if (distance < currentMinDistance || currentMinDistance == -1) {
