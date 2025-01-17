@@ -1,3 +1,18 @@
+/**
+*
+* Solution to course project #5
+* Introduction to programming course
+* Faculty of Mathematics and Informatics of Sofia University
+* Winter semester 2024/2025
+*
+* @author Alexander Asenov
+* @idnumber 2MI0600422
+* @compiler VCC
+*
+* <Main program file. Start to run pacman.>
+*
+*/
+
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -6,7 +21,11 @@
 
 using namespace std;
 
-#pragma region GameDataStructures
+/*
+===================================
+Game custom types
+===================================
+*/
 
 enum GameMode {
 	ChaseMode,
@@ -42,7 +61,6 @@ struct Ghost {
 	Coordinates target;
 	void (*setTarget) (Game& game);
 	const VectorMovement* currentVector;
-
 	int chaseModeColorCode;
 	int startScoreValue;
 	char symbol;
@@ -65,16 +83,27 @@ struct Game {
 	Pacman pacman;
 	Map map;
 	GameMode currentGameMode;
-
 	int foodCount;
-	int leftInFrightenedMode;
+	int movesLeftInFrightenedMode;
 	int score;
 	bool ghostsMustMoveBack;
 };
 
-#pragma endregion
+/*
+===================================
+Constants
+===================================
+*/
 
-#pragma region Constants
+const int MILISECONDSINCYCLE = 10;
+const int CYCLESPERMOVE = 20;
+const int CYCLESPERFIRSTPACMANMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
+const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
+
+const int MOVESINFRIGHTENEDMODE = 10;
+
+const int OFFSETX = 0;
+const int OFFSETY = 0;
 
 const int MAZEMAXSIZE = 50;
 
@@ -117,6 +146,7 @@ char MAPFILENAME[] = "map.txt";
 
 char UNABLETOOPENFILEMESSAGE[] = "Couldn't open file!";
 char FILETOOSHORTMESSAGE[] = "File shorter than expected!";
+char ERRORDURINGSETUPMESSAGE[] = "Error during set up!";
 
 char PLAYERHASWONMESSAGE[] = "You won!";
 char PLAYERHASLOSTMESSAGE[] = "You lost";
@@ -137,21 +167,11 @@ const VectorMovement* vectors[VECTORSLENGTH] = {
 	&RIGHTVECTOR
 };
 
-const int MILISECONDSINCYCLE = 10;
-const int CYCLESPERMOVE = 10;
-const int CYCLESPERMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
-const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
-
-const int MOVESINFRIGHTENEDMODE = 10;
-
-const int OFFSETX = 0;
-const int OFFSETY = 0;
-
 const char UPKEYSYMBOL = 'W';
 const char LEFTKEYSYMBOL = 'A';
 const char DOWNKEYSYMBOL = 'S';
 const char RIGHTKEYSYMBOL = 'D';
-const int MASKKEYPRESSED = 0x8000;
+const int MASKKEYDOWN = 0x8000;
 
 const int PINKYERROR = 4;
 const int INKYERROR = 2;
@@ -160,29 +180,33 @@ const int CLYDEMAXDISTANCE = 8;
 const int FRIGHTENEDMODEGHOSTSCOLOR = 1;
 
 const double DEFAULTPRECISION = 1e-7;
-#pragma endregion
 
-#pragma region GenericMethods
+/*
+===================================
+Generic Methods
+===================================
+*/
 
 double getAbsoluteValue(double num) {
 	return (num >= 0) ? num : (-1) * num;
 }
 
+// Uses Newton–Raphson method to find square root
 double squareRoot(double num, double eps = DEFAULTPRECISION) {
 	if (num < 0) {
-		return -1;
+		return -1; // There is no square root of negative number
 	}
 
 	if (num == 0) {
-		return 0;
+		return 0; // The square root of 0 is 0
 	}
 
 	double prev = num;
-	double next = (num + 1) / 2;
+	double next = (num + 1) / 2.0; // Initial guess
 
 	while (getAbsoluteValue(prev - next) > eps) {
 		prev = next;
-		next = (prev + num / prev) / 2;
+		next = (prev + num / prev) / 2.0; // Next guess
 	}
 	
 	return next;
@@ -202,7 +226,7 @@ int getRandom(unsigned int start, unsigned int end) {
 	return rand() % (end - start) + start;
 }
 
-unsigned int getNumberOfTrues(bool* bools, int length) {
+unsigned int getNumberOfTruesInBoolArray(bool* bools, int length) {
 	unsigned int result = 0;
 	for (size_t i = 0; i < length; i++)
 	{
@@ -319,9 +343,12 @@ void setColorToSymbolStatic(char symbol) {
 	}
 }
 
-#pragma endregion
+/*
+===================================
+Vector Methods
+===================================
+*/
 
-#pragma region VectorMovementMethods
 bool areEqualVectors(VectorMovement firstVector, VectorMovement secondVector) {
 	return firstVector.x == secondVector.x && firstVector.y == secondVector.y;
 }
@@ -355,10 +382,11 @@ const VectorMovement* getOppositeVector(const VectorMovement* vector) {
 	return nullptr;
 }
 
-
-#pragma endregion
-
-#pragma region CoordinatesMethods
+/*
+===================================
+Coordinates Methods
+===================================
+*/
 
 bool areCoordinatesEqual(const Coordinates& firstCoordinates, const Coordinates& secondCoordinates) {
 	return firstCoordinates.x == secondCoordinates.x && firstCoordinates.y == secondCoordinates.y;
@@ -378,20 +406,23 @@ void printAtCoordinatesOfConsole(const Coordinates& coordinates, char symbol) {
 	cout << symbol;
 }
 
-void printAtCoordinatesOfGame(const Coordinates& coordinates, char symbol) {
+void printAtCoordinatesWithOffset(const Coordinates& coordinates, char symbol) {
 	setCursorPositionWithOffset(coordinates);
 	cout << symbol;
 }
 
-void printAtCoordinatesOfGameWithStaticColor(const Coordinates& coordinates, char symbol) {
+void printAtCoordinatesWithOffsetAndStaticColor(const Coordinates& coordinates, char symbol) {
 	setColorToSymbolStatic(symbol);
-	printAtCoordinatesOfGame(coordinates, symbol);
+	printAtCoordinatesWithOffset(coordinates, symbol);
 }
 
-#pragma endregion
+/*
+===================================
+Map Methods
+===================================
+*/
 
-#pragma region MapFunctions
-
+// Gets Coordinates in range from 0 to map sizes
 void reduceCoordinates(Map& map, Coordinates& coordinates) {
 	if (map.horizontalSize <= coordinates.x) {
 		coordinates.x %= map.horizontalSize;
@@ -431,15 +462,10 @@ void setAtPosition(Map& map, const Coordinates& coordinates, char symbol) {
 	map.content[coordinates.y][coordinates.x] = symbol;
 }
 
-bool areCoordinatesReachableForPacman(Map& map, Coordinates& coordinates) {
-	return areCoordinatesInMapRange(map, coordinates)
-		&& !isWall(getAtPosition(map, coordinates));
-}
-
 void printAtMap(Map& map, const Coordinates& coordinates, char symbol) {
 	if (areCoordinatesInMapRange(map, coordinates)) {
 		setAtPosition(map, coordinates, symbol);
-		printAtCoordinatesOfGame(coordinates, symbol);
+		printAtCoordinatesWithOffset(coordinates, symbol);
 	}
 }
 
@@ -470,7 +496,7 @@ void printMapOnConsole(Map& map) {
 		for (size_t j = 0; j < map.horizontalSize; j++)
 		{
 			Coordinates coordinates = { j, i };
-			printAtCoordinatesOfGameWithStaticColor(coordinates, getAtPosition(map, coordinates));
+			printAtCoordinatesWithOffsetAndStaticColor(coordinates, getAtPosition(map, coordinates));
 		}
 	}
 };
@@ -487,9 +513,22 @@ void disposeMap(Map& map) {
 	map.verticalSize = 0;
 };
 
-#pragma endregion
+bool areCoordinatesValidPacmanPosition(Map& map, Coordinates& coordinates) {
+	return areCoordinatesInMapRange(map, coordinates)
+		&& !isWall(getAtPosition(map, coordinates));
+}
 
-#pragma region GhostMethods
+bool areCoordinatesValidGhostPosition(Map& map, Coordinates& coordinates) {
+	return areCoordinatesInMapRange(map, coordinates)
+		&& !isWall(getAtPosition(map, coordinates))
+		&& !isGhost(getAtPosition(map, coordinates));
+}
+
+/*
+===================================
+Ghost Methods
+===================================
+*/
 
 int getGhostColorCode(GameMode& gameMode, Ghost& ghost) {
 	if (gameMode == ChaseMode) {
@@ -505,9 +544,12 @@ void startGhostIfNeeded(Ghost& ghost, int score) {
 	}
 }
 
-#pragma endregion
+/*
+===================================
+Game Methods
+===================================
+*/
 
-#pragma region GameFunctions
 Ghost* getGhostBySymbol(Game& game, char symbol) {
 	if (game.blinky.symbol == symbol) {
 		return &game.blinky;
@@ -528,7 +570,6 @@ Ghost* getGhostBySymbol(Game& game, char symbol) {
 	return nullptr;
 }
 
-
 void eatFood(Game& game, Coordinates& coordinates) {
 	char symbol = getAtPosition(game.map, coordinates);
 
@@ -548,7 +589,7 @@ void eatFood(Game& game, Coordinates& coordinates) {
 			game.ghostsMustMoveBack = true;
 		}
 
-		game.leftInFrightenedMode = MOVESINFRIGHTENEDMODE;
+		game.movesLeftInFrightenedMode = MOVESINFRIGHTENEDMODE;
 	}
 }
 
@@ -559,6 +600,11 @@ void setColorToSymbolInGame(Game& game, char symbol) {
 	}
 
 	setColorToSymbolStatic(symbol);
+}
+
+void printAtMapWithGameColor(Game& game, Coordinates& position, char symbol) {
+	setColorToSymbolInGame(game, symbol);
+	printAtMap(game.map, position, symbol);
 }
 
 void updatePacmanPosition(Game& game, Coordinates& newPosition) {
@@ -572,15 +618,12 @@ void updatePacmanPosition(Game& game, Coordinates& newPosition) {
 		eatFood(game, newPosition);
 	}
 
-	printAtMap(game.map, game.pacman.position, FREESPACESYMBOL);
+	printAtMapWithGameColor(game, game.pacman.position, FREESPACESYMBOL);
 
 	copyCoordinates(game.pacman.position, newPosition);
 
-	setColorToSymbolInGame(game, game.pacman.symbol);
-	printAtMap(game.map, game.pacman.position, game.pacman.symbol);
+	printAtMapWithGameColor(game, game.pacman.position, game.pacman.symbol);
 }
-
-
 
 void movePacman(Game& game) {
 	Coordinates newPosition = {
@@ -590,7 +633,7 @@ void movePacman(Game& game) {
 
 	reduceCoordinates(game.map, newPosition);
 
-	if (areCoordinatesReachableForPacman(game.map, newPosition)) {
+	if (areCoordinatesValidPacmanPosition(game.map, newPosition)) {
 		updatePacmanPosition(game, newPosition);
 	}
 }
@@ -604,9 +647,11 @@ void setPinkyTarget(Game& game) {
 		return;
 	}
 
+	// Set target to 4 in front of pacman
 	game.pinky.target.x = PINKYERROR * game.pacman.currentDirection->x + game.pacman.position.x;
 	game.pinky.target.y = PINKYERROR * game.pacman.currentDirection->y + game.pacman.position.y;
 
+	// When pacman is moving up the target is also 4 to the left 
 	if (game.pacman.currentDirection == &UPVECTOR) {
 		game.pinky.target.x += PINKYERROR * game.pacman.currentDirection->y;
 	}
@@ -619,37 +664,40 @@ void setInkyTarget(Game& game) {
 
 	Coordinates infrontPacman;
 	copyCoordinates(infrontPacman, game.pacman.position);
+
+	// Get coordinates of 2 in front of pacman
 	infrontPacman.x += INKYERROR * game.pacman.currentDirection->x;
 	infrontPacman.y += INKYERROR * game.pacman.currentDirection->y;
 
+	// When pacman is moving up the coordinates are also 2 to the left 
 	if (game.pacman.currentDirection == &UPVECTOR) {
 		infrontPacman.x += INKYERROR * game.pacman.currentDirection->y;
 	}
 
+	// The target is the reverse vector of infrontPacman and blinky's position
 	game.inky.target.x = infrontPacman.x + (infrontPacman.x - game.blinky.position.x);
 	game.inky.target.y = infrontPacman.y + (infrontPacman.y - game.blinky.position.y);
 }
 
 void setClydeTarget(Game& game) {
-	if (getDistance(game.pacman.position, game.clyde.position) >= CLYDEMAXDISTANCE) {
-		copyCoordinates(game.clyde.target, game.pacman.position);
-	}
-	else {
+	if (getDistance(game.pacman.position, game.clyde.position) < CLYDEMAXDISTANCE) {
+		//When distance is less than 8 go to the left down corner (reappearCoordinates)
 		copyCoordinates(game.clyde.target, game.clyde.reappearCoordinates);
 	}
+	else {
+		//When distance is more than or equal to 8 follow pacman
+		copyCoordinates(game.clyde.target, game.pacman.position);
+	}
 }
-
 
 void removeGhost(Game& game, Ghost& ghost) {
 	char symbol = getAtPosition(game.map, ghost.position);
 
 	if (areCoordinatesEqual(game.pacman.position, ghost.position)) {
-		setColorToSymbolInGame(game, game.pacman.symbol);
-		printAtMap(game.map, ghost.position, game.pacman.symbol);
+		printAtMapWithGameColor(game, ghost.position, game.pacman.symbol);
 	}
 	else {
-		setColorToSymbolInGame(game, ghost.previousSymbolOnCurrentPosition);
-		printAtMap(game.map, ghost.position, ghost.previousSymbolOnCurrentPosition);
+		printAtMapWithGameColor(game, ghost.position, ghost.previousSymbolOnCurrentPosition);
 	}
 }
 
@@ -662,19 +710,12 @@ void printGhostAtPosition(Game& game, Ghost& ghost, Coordinates newPosition) {
 		}
 	}
 
-	setColorToSymbolInGame(game, ghost.symbol);
-	printAtMap(game.map, ghost.position, ghost.symbol);
+	printAtMapWithGameColor(game, ghost.position, ghost.symbol);
 }
 
 void updateGhostPosition(Game& game, Ghost& ghost, Coordinates& newPosition) {
 	removeGhost(game, ghost);
 	printGhostAtPosition(game, ghost, newPosition);
-}
-
-bool areCoordinatesValidGhostPosition(Map& map, Coordinates& coordinates) {
-	return areCoordinatesInMapRange(map, coordinates)
-		&& !isWall(getAtPosition(map, coordinates))
-		&& !isGhost(getAtPosition(map, coordinates));
 }
 
 void moveGhostUsingCurrentVector(Game& game, Ghost& ghost) {
@@ -708,8 +749,7 @@ void setMoveBackwardsOrStop(Game& game, Ghost& ghost) {
 	ghost.currentVector = &ZEROVECTOR;
 }
 
-
-bool isVectorAllowed(Map& map, Ghost& ghost, const VectorMovement* vector) {
+bool isVectorPositionValidForGhost(Map& map, Ghost& ghost, const VectorMovement* vector) {
 	if (vector == nullptr) {
 		return false;
 	}
@@ -727,14 +767,13 @@ bool isVectorAllowed(Map& map, Ghost& ghost, const VectorMovement* vector) {
 	return areCoordinatesValidGhostPosition(map, possibleCoordinates);
 }
 
-
 void setGhostVectorToTarget(Game& game, Ghost& ghost) {
 	double minDistance = -1;
 	int currentIndex = 0;
 
 	for (size_t i = 0; i < VECTORSLENGTH; i++)
 	{
-		if (isVectorAllowed(game.map, ghost, vectors[i])) {
+		if (isVectorPositionValidForGhost(game.map, ghost, vectors[i])) {
 			Coordinates possibleCoordinates = {
 				ghost.position.x + vectors[i]->x,
 				ghost.position.y + vectors[i]->y
@@ -758,13 +797,13 @@ void setGhostVectorToTarget(Game& game, Ghost& ghost) {
 }
 
 void setGhostVectorToRandom(Game& game, Ghost& ghost) {
-	bool isAllowed[VECTORSLENGTH] = {};
+	bool isValid[VECTORSLENGTH] = {};
 	for (int i = 0; i < VECTORSLENGTH; i++)
 	{
-		isAllowed[i] = isVectorAllowed(game.map, ghost, vectors[i]);
+		isValid[i] = isVectorPositionValidForGhost(game.map, ghost, vectors[i]);
 	}
 
-	unsigned int numberOfPossibleDirections = getNumberOfTrues(isAllowed, VECTORSLENGTH);
+	unsigned int numberOfPossibleDirections = getNumberOfTruesInBoolArray(isValid, VECTORSLENGTH);
 
 	if (numberOfPossibleDirections == 0) {
 		setMoveBackwardsOrStop(game, ghost);
@@ -777,7 +816,7 @@ void setGhostVectorToRandom(Game& game, Ghost& ghost) {
 	int count = 0;
 	for (size_t i = 0; i < VECTORSLENGTH; i++)
 	{
-		if (isAllowed[i]) {
+		if (isValid[i]) {
 			count++;
 
 			if (random == count) {
@@ -792,7 +831,6 @@ void setGhostVectorToRandom(Game& game, Ghost& ghost) {
 		}
 	}
 }
-
 
 void moveGhost(Game& game, Ghost& ghost) {
 	startGhostIfNeeded(ghost, game.score);
@@ -819,7 +857,6 @@ void moveGhost(Game& game, Ghost& ghost) {
 	moveGhostUsingCurrentVector(game, ghost);
 }
 
-
 void moveGhosts(Game& game) {
 	moveGhost(game, game.blinky);
 	moveGhost(game, game.pinky);
@@ -828,9 +865,11 @@ void moveGhosts(Game& game) {
 	game.ghostsMustMoveBack = false;
 }
 
-#pragma endregion
-
-#pragma region ReadFile
+/*
+===================================
+Set Up Methods
+===================================
+*/
 
 void intializeMap(Map& map) {
 	map.content = new char* [map.verticalSize];
@@ -870,7 +909,6 @@ void readFileAndSaveOnMap(Map& map, ifstream& mapFile) {
 	}
 }
 
-
 void readMap(Map& map, const char* fileName) {
 	ifstream mapFile(fileName);
 
@@ -892,11 +930,6 @@ void readMap(Map& map, const char* fileName) {
 
 	mapFile.close();
 }
-
-
-#pragma endregion
-
-#pragma region SetUpGame
 
 void setToClosestValidCoordinates(Map& map, Coordinates& coordinates) {
 	if (areCoordinatesInMapRange(map, coordinates) && !isWall(getAtPosition(map, coordinates))) {
@@ -944,8 +977,16 @@ int countFood(Map& map) {
 	return count;
 }
 
-bool setUpGhost(Game& game, Ghost& ghost, char symbol, bool hasStarted, char previousSymbolOnCurrentPosition,
-	int startScoreValue, int chaseModeColorCode, const VectorMovement* currentVector, void (*setTarget) (Game& game),
+bool setUpGhost(
+	Game& game,
+	Ghost& ghost,
+	char symbol,
+	bool hasStarted,
+	char previousSymbolOnCurrentPosition,
+	int startScoreValue,
+	int chaseModeColorCode,
+	const VectorMovement* currentVector,
+	void (*setTarget) (Game& game),
 	const Coordinates& reappearCoordinates) {
 	if (currentVector == nullptr) {
 		return false;
@@ -991,11 +1032,11 @@ bool setUpPacmanAndGhosts(Game& game) {
 			setClydeTarget, { 0, game.map.verticalSize - 1 });
 }
 
-
 bool setUpGame(Game& game) {
+	srand(time(0));
 	showConsoleCursor(false);
 
-	game.leftInFrightenedMode = 0;
+	game.movesLeftInFrightenedMode = 0;
 	game.ghostsMustMoveBack = false;
 	game.score = 0;
 	readMap(game.map, MAPFILENAME);
@@ -1007,28 +1048,35 @@ bool setUpGame(Game& game) {
 	return setUpPacmanAndGhosts(game);
 }
 
-#pragma endregion
-
-#pragma region MainGameLogic
+/*
+===================================
+Main Game Methods
+===================================
+*/
 
 const VectorMovement* listenForInput() {
-	if (GetAsyncKeyState(UPKEYSYMBOL) & MASKKEYPRESSED) {
+	if (GetAsyncKeyState(UPKEYSYMBOL) & MASKKEYDOWN) {
 		return &UPVECTOR;
 	}
 
-	if (GetAsyncKeyState(LEFTKEYSYMBOL) & MASKKEYPRESSED) {
+	if (GetAsyncKeyState(LEFTKEYSYMBOL) & MASKKEYDOWN) {
 		return &LEFTVECTOR;
 	}
 
-	if (GetAsyncKeyState(DOWNKEYSYMBOL) & MASKKEYPRESSED) {
+	if (GetAsyncKeyState(DOWNKEYSYMBOL) & MASKKEYDOWN) {
 		return &DOWNVECTOR;
 	}
 
-	if (GetAsyncKeyState(RIGHTKEYSYMBOL) & MASKKEYPRESSED) {
+	if (GetAsyncKeyState(RIGHTKEYSYMBOL) & MASKKEYDOWN) {
 		return &RIGHTVECTOR;
 	}
 
 	return nullptr;
+};
+
+void disposeGame(Game& game) {
+	disposeMap(game.map);
+	showConsoleCursor(true);
 };
 
 bool playerWon(Game& game) {
@@ -1047,7 +1095,7 @@ void checkForPacmanNewDirection(Game& game) {
 			game.pacman.position.y + newDirection->y 
 		};
 
-		if (areCoordinatesReachableForPacman(game.map, possibleCoordinates)) {
+		if (areCoordinatesValidPacmanPosition(game.map, possibleCoordinates)) {
 			game.pacman.currentDirection = newDirection;
 		}
 	}
@@ -1055,8 +1103,11 @@ void checkForPacmanNewDirection(Game& game) {
 
 void handleEndOfGame(Game& game, bool playerHasWon) {
 	setConsoleColor(DEFAULTCOLOR);
-	Coordinates end = { 0, game.map.verticalSize + 1 };
-	setCursorPositionWithOffset(end);
+
+	// The end of the map plus one row
+	Coordinates messageCoordinates = { 0, game.map.verticalSize + 1 }; 
+	
+	setCursorPositionWithOffset(messageCoordinates);
 	if (playerHasWon) {
 		cout << PLAYERHASWONMESSAGE << endl;
 	}
@@ -1065,25 +1116,18 @@ void handleEndOfGame(Game& game, bool playerHasWon) {
 	}
 }
 
-
-void disposeGame(Game& game) {
-	disposeMap(game.map);
-};
-
-
 void handleFrightenedMode(Game& game) {
-	if (game.currentGameMode == FrightenedMode && game.leftInFrightenedMode == 0) {
-		game.currentGameMode = ChaseMode;
-		game.ghostsMustMoveBack = true;
-	}
-
 	if (game.currentGameMode == FrightenedMode) {
-		game.leftInFrightenedMode--;
+		game.movesLeftInFrightenedMode--;
+	}
+	
+	if (game.currentGameMode == FrightenedMode && game.movesLeftInFrightenedMode <= 0) {
+		game.movesLeftInFrightenedMode = 0;
+		game.currentGameMode = ChaseMode;
 	}
 }
 
-
-Ghost* hasColided(Game& game) {
+Ghost* getCurrentCollidingGhost(Game& game) {
 	if (areCoordinatesEqual(game.pacman.position, game.blinky.position)) {
 		return &game.blinky;
 	}
@@ -1103,24 +1147,22 @@ Ghost* hasColided(Game& game) {
 	return nullptr;
 }
 
+bool checkForCollidedGhost(Game& game) {
+	Ghost* collidingGhost = getCurrentCollidingGhost(game);
 
-bool checkForColidedGhost(Game& game) {
-	Ghost* coliderGhost = hasColided(game);
-
-	if (coliderGhost != nullptr) {
+	if (collidingGhost != nullptr) {
 		if (game.currentGameMode == FrightenedMode) {
-			updateGhostPosition(game, *coliderGhost, coliderGhost->reappearCoordinates);
+			updateGhostPosition(game, *collidingGhost, collidingGhost->reappearCoordinates);
 		}
 
-		setColorToSymbolInGame(game, coliderGhost->symbol);
-		printAtCoordinatesOfGame(coliderGhost->position, coliderGhost->symbol);
+		// Prints ghost again in case pacman collided into him
+		printAtMapWithGameColor(game, collidingGhost->position, collidingGhost->symbol);
 
 		return true;
 	}
 
 	return false;
 }
-
 
 void startGame(Game& game) {
 	printMapOnConsole(game.map);
@@ -1130,21 +1172,21 @@ void startGame(Game& game) {
 	while (!playerHasWon) {
 		checkForPacmanNewDirection(game);
 
-		if (game.currentGameMode == FrightenedMode && cycles == CYCLESPERMOVEINFRIGHTENEDMODE) {
+		if (game.currentGameMode == FrightenedMode && cycles == CYCLESPERFIRSTPACMANMOVEINFRIGHTENEDMODE) {
 			movePacman(game);
-			checkForColidedGhost(game);
+			checkForCollidedGhost(game);
 			playerHasWon = playerWon(game);
 		}
-		else if (cycles >= CYCLESPERMOVE) {
+		else if (cycles == CYCLESPERMOVE) {
 			movePacman(game);
 
-			if (playerLost(game, checkForColidedGhost(game))) {
+			if (playerLost(game, checkForCollidedGhost(game))) {
 				break;
 			}
 
 			moveGhosts(game);
 
-			if (playerLost(game, checkForColidedGhost(game))) {
+			if (playerLost(game, checkForCollidedGhost(game))) {
 				break;
 			}
 
@@ -1162,13 +1204,13 @@ void startGame(Game& game) {
 	disposeGame(game);
 }
 
-#pragma endregion
-
 int main()
 {
-	srand(time(0));
 	Game game;
 	if (setUpGame(game)) {
 		startGame(game);
-	}	
+	}
+	else {
+		cout << ERRORDURINGSETUPMESSAGE << endl;
+	}
 }
