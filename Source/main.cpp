@@ -144,7 +144,6 @@ const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
 
 const int MOVESINFRIGHTENEDMODE = 10;
 
-
 const int OFFSETX = 0;
 const int OFFSETY = 0;
 
@@ -405,7 +404,7 @@ bool areCoordinatesReachableForPacman(Map& map, Coordinates& coordinates) {
 void printAtMap(Map& map, const Coordinates& coordinates, char symbol) {
 	if (areCoordinatesInMapRange(map, coordinates)) {
 		setAtPosition(map, coordinates, symbol);
-		printAtCoordinatesOfConsole(coordinates, symbol);
+		printAtCoordinatesOfGame(coordinates, symbol);
 	}
 }
 
