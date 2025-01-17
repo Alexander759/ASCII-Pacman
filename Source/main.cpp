@@ -142,7 +142,7 @@ const int CYCLESPERMOVE = 10;
 const int CYCLESPERMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
 const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
 
-const int MOVESINFRIGHTENEDMODE = 100;
+const int MOVESINFRIGHTENEDMODE = 10;
 
 const int OFFSETX = 0;
 const int OFFSETY = 0;
@@ -153,15 +153,51 @@ const char DOWNKEYSYMBOL = 'S';
 const char RIGHTKEYSYMBOL = 'D';
 const int MASKKEYPRESSED = 0x8000;
 
-
 const int PINKYERROR = 4;
 const int INKYERROR = 2;
 const int CLYDEMAXDISTANCE = 8;
 
 const int FRIGHTENEDMODEGHOSTSCOLOR = 1;
+
+const double DEFAULTPRECISION = 1e-7;
 #pragma endregion
 
 #pragma region GenericMethods
+
+double getAbsoluteValue(double num) {
+	return (num >= 0) ? num : (-1) * num;
+}
+
+double squareRoot(double num, double eps = DEFAULTPRECISION) {
+	if (num < 0) {
+		return -1;
+	}
+
+	if (num == 0) {
+		return 0;
+	}
+
+	double prev = num;
+	double next = (num + 1) / 2;
+
+	while (getAbsoluteValue(prev - next) > eps) {
+		prev = next;
+		next = (prev + num / prev) / 2;
+	}
+	
+	return next;
+}
+
+double exponentiate(double base, unsigned int power) {
+	double result = 1;
+	for (size_t i = 0; i < power; i++)
+	{
+		result *= base;
+	}
+
+	return result;
+}
+
 int getRandom(unsigned int start, unsigned int end) {
 	return rand() % (end - start) + start;
 }
@@ -329,7 +365,7 @@ bool areCoordinatesEqual(const Coordinates& firstCoordinates, const Coordinates&
 }
 
 double getDistance(Coordinates& point1, Coordinates& point2) {
-	return sqrt(pow(point1.x - point2.x, 2) + pow(point1.y - point2.y, 2));
+	return squareRoot(exponentiate(point1.x - point2.x, 2) + exponentiate(point1.y - point2.y, 2));
 }
 
 void copyCoordinates(Coordinates& destination, const Coordinates& source) {
@@ -594,6 +630,15 @@ void setInkyTarget(Game& game) {
 	game.inky.target.y = infrontPacman.y + (infrontPacman.y - game.blinky.position.y);
 }
 
+void setClydeTarget(Game& game) {
+	if (getDistance(game.pacman.position, game.clyde.position) >= CLYDEMAXDISTANCE) {
+		copyCoordinates(game.clyde.target, game.pacman.position);
+	}
+	else {
+		copyCoordinates(game.clyde.target, game.clyde.reappearCoordinates);
+	}
+}
+
 
 void removeGhost(Game& game, Ghost& ghost) {
 	char symbol = getAtPosition(game.map, ghost.position);
@@ -630,15 +675,6 @@ bool areCoordinatesValidGhostPosition(Map& map, Coordinates& coordinates) {
 	return areCoordinatesInMapRange(map, coordinates)
 		&& !isWall(getAtPosition(map, coordinates))
 		&& !isGhost(getAtPosition(map, coordinates));
-}
-
-void setClydeTarget(Game& game) {
-	if (getDistance(game.pacman.position, game.clyde.position) >= CLYDEMAXDISTANCE) {
-		copyCoordinates(game.clyde.target, game.pacman.position);
-	}
-	else {
-		copyCoordinates(game.clyde.target, game.clyde.reappearCoordinates);
-	}
 }
 
 void moveGhostUsingCurrentVector(Game& game, Ghost& ghost) {
