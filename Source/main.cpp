@@ -142,7 +142,7 @@ const int CYCLESPERMOVE = 10;
 const int CYCLESPERMOVEINFRIGHTENEDMODE = CYCLESPERMOVE / 2;
 const int MILISECONDSPERMOVE = MILISECONDSINCYCLE * CYCLESPERMOVE;
 
-const int MOVESINFRIGHTENEDMODE = 10;
+const int MOVESINFRIGHTENEDMODE = 100;
 
 const int OFFSETX = 0;
 const int OFFSETY = 0;
@@ -222,7 +222,6 @@ bool isFood(char symbol) {
 bool isWall(char symbol) {
 	return symbol == WALLSYMBOL;
 }
-
 
 void showConsoleCursor(bool showCursor) {
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -529,6 +528,10 @@ void setColorToSymbolInGame(Game& game, char symbol) {
 void updatePacmanPosition(Game& game, Coordinates& newPosition) {
 	char symbol = getAtPosition(game.map, newPosition);
 
+	if (isGhost(symbol)) {
+		symbol = getGhostBySymbol(game, symbol)->previousSymbolOnCurrentPosition;
+	}
+
 	if (isFood(symbol)) {
 		eatFood(game, newPosition);
 	}
@@ -607,8 +610,8 @@ void removeGhost(Game& game, Ghost& ghost) {
 
 void printGhostAtPosition(Game& game, Ghost& ghost, Coordinates newPosition) {
 	if (!areCoordinatesEqual(ghost.position, newPosition)) {
-		ghost.previousSymbolOnCurrentPosition = getAtPosition(game.map, newPosition);
 		copyCoordinates(ghost.position, newPosition);
+		ghost.previousSymbolOnCurrentPosition = getAtPosition(game.map, newPosition);
 		if (ghost.previousSymbolOnCurrentPosition == game.pacman.symbol) {
 			ghost.previousSymbolOnCurrentPosition = FREESPACESYMBOL;
 		}
