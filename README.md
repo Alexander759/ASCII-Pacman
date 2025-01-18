@@ -10,4 +10,4 @@ The game was made as part of a university assignment.
 ## How to play
 
 To start the game download the project. Then compile the main.cpp file and make sure that the map.txt file is in the same directory
-as the compiled executable. Start game and have fun.
+as the compiled executable. Start the game and have fun.
