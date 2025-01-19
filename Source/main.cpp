@@ -701,11 +701,16 @@ void removeGhost(Game& game, Ghost& ghost) {
 	}
 }
 
-void printGhostAtPosition(Game& game, Ghost& ghost, Coordinates newPosition) {
+void printGhostAtPosition(Game& game, Ghost& ghost, Coordinates& newPosition) {
 	if (!areCoordinatesEqual(ghost.position, newPosition)) {
 		copyCoordinates(ghost.position, newPosition);
 		ghost.previousSymbolOnCurrentPosition = getAtPosition(game.map, newPosition);
-		if (ghost.previousSymbolOnCurrentPosition == game.pacman.symbol) {
+
+		if (isGhost(ghost.previousSymbolOnCurrentPosition)) {
+			ghost.previousSymbolOnCurrentPosition = getGhostBySymbol(game, ghost.previousSymbolOnCurrentPosition)->previousSymbolOnCurrentPosition;
+		}
+
+		if (isPacman(ghost.previousSymbolOnCurrentPosition)) {
 			ghost.previousSymbolOnCurrentPosition = FREESPACESYMBOL;
 		}
 	}
